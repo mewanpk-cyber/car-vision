@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ku" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07111f">
+<meta name="description" content="Car Vision - mobile vehicle camera scanner">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Car Vision Scanner</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#050b14;color:#eef5ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+.app{min-height:100vh;max-width:720px;margin:auto;background:#07111f}
+header{padding:18px 16px 10px;display:flex;justify-content:space-between;align-items:center}
+.logo{font-weight:800;font-size:20px}.sub{font-size:12px;color:#8fa2bb;margin-top:3px}
+.badge{font-size:11px;padding:7px 10px;border:1px solid #29415f;border-radius:20px;color:#8fe3b1}
+.camera{position:relative;margin:8px 12px 12px;border-radius:24px;overflow:hidden;background:#02060b;aspect-ratio:3/4;border:1px solid #20324a}
+video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(1)}
+.overlay{position:absolute;inset:0;pointer-events:none}
+.grid{position:absolute;inset:0;background:linear-gradient(90deg,transparent 49.8%,#ffffff10 50%,transparent 50.2%),linear-gradient(0deg,transparent 49.8%,#ffffff10 50%,transparent 50.2%)}
+.scanbox{position:absolute;left:11%;right:11%;top:25%;height:42%;border:2px solid #48e7a2;border-radius:20px;box-shadow:0 0 0 999px #00000030,0 0 24px #48e7a250}
+.corner{position:absolute;width:28px;height:28px;border-color:#b7ffe0;border-style:solid}.tl{top:-2px;left:-2px;border-width:4px 0 0 4px;border-radius:12px 0}.tr{top:-2px;right:-2px;border-width:4px 4px 0 0;border-radius:0 12px}.bl{bottom:-2px;left:-2px;border-width:0 0 4px 4px;border-radius:0 0 0 12px}.br{bottom:-2px;right:-2px;border-width:0 4px 4px 0;border-radius:0 0 12px}
+.laser{position:absolute;left:12%;right:12%;top:47%;height:2px;background:#48e7a2;box-shadow:0 0 14px #48e7a2;animation:scan 2.2s linear infinite}@keyframes scan{0%,100%{transform:translateY(-115px);opacity:.25}50%{transform:translateY(115px);opacity:1}}
+.status{position:absolute;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;font-size:12px}.live{background:#07111fcc;padding:7px 10px;border-radius:14px}.dot{display:inline-block;width:7px;height:7px;background:#48e7a2;border-radius:50%;margin-left:5px;box-shadow:0 0 8px #48e7a2}
+.controls{position:absolute;bottom:16px;left:0;right:0;display:flex;justify-content:center;gap:14px}.btn{border:0;color:white;background:#17283e;padding:12px 16px;border-radius:16px;font-weight:700}.scan{width:72px;height:72px;border-radius:50%;background:#48e7a2;color:#04110b;font-size:15px;border:5px solid #d9ffed;box-shadow:0 0 30px #48e7a255}
+.panel{margin:0 12px 14px;padding:15px;background:#0b1829;border:1px solid #1d3048;border-radius:20px}.title{font-weight:800;margin-bottom:12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.item{background:#0f2034;border-radius:14px;padding:11px}.label{font-size:11px;color:#8298b3}.value{font-size:15px;font-weight:700;margin-top:5px;word-break:break-word}
+.actions{display:flex;gap:8px}.actions button{flex:1}.danger{background:#301923}.history{max-height:280px;overflow:auto}.record{padding:12px 0;border-bottom:1px solid #1d3048}.record:last-child{border-bottom:0}.empty{text-align:center;color:#7589a3;padding:15px}
+.note{font-size:11px;color:#7f93ad;line-height:1.7;margin-top:10px}
+@media(min-width:700px){.app{box-shadow:0 0 50px #000}.camera{aspect-ratio:16/10}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+<div id="httpsNotice" style="display:none;position:fixed;z-index:9999;left:12px;right:12px;top:12px;background:#35151b;border:1px solid #a33b4b;color:#fff;padding:14px 16px;border-radius:16px;box-shadow:0 12px 35px #0008;text-align:center;font-size:13px;line-height:1.6">
+<b>HTTPS پێویستە بۆ Live Camera</b><br>
+ئەم پەڕەیە لە HTTPS بکەرەوە، پاشان Camera → Allow هەڵبژێرە.
+</div>
+<div class="app">
+<header><div><div class="logo">CAR VISION</div><div class="sub">Mobile Vehicle Scanner</div></div><div class="badge">● READY</div></header>
+
+<section class="camera">
+<video id="video" autoplay playsinline muted></video>
+<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none">
+<div class="overlay"><div class="grid"></div><div class="scanbox"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></div><div class="laser"></div>
+<div class="status"><span class="live"><span class="dot"></span> LIVE CAMERA</span><span class="live" id="camState">CAMERA CHECK...</span></div></div>
+<div class="controls"><button class="btn" id="switch">↻</button><button class="scan" id="auto">AUTO</button><button class="btn" id="stop">■</button></div>
+<div id="cameraHelp" style="position:absolute;left:14px;right:14px;bottom:100px;display:none;background:#081321dd;border:1px solid #29415f;border-radius:14px;padding:12px;text-align:center;font-size:12px;line-height:1.6">
+  <b>کامێرا لەم شوێنەدا ڕاستەوخۆ بەردەست نییە</b><br>
+  ئەم فایلە لە Preview/Files کرایەوە. بۆ Live Camera، فایلەکە لە HTTPS لە Safari بکەرەوە.<br>
+  <button id="takePhoto" class="btn" style="margin-top:8px">📷 وێنەی ئۆتۆمبێل بگرە</button>
+</div>
+</section>
+
+<section class="panel">
+<div class="title">ئەنجامی سکان</div>
+<div class="grid2">
+<div class="item"><div class="label">ئۆتۆمبێل</div><div class="value" id="car">چاوەڕوانی سکان...</div></div>
+<div class="item"><div class="label">ڕەنگ</div><div class="value" id="color">—</div></div>
+<div class="item"><div class="label">ژمارەی پلاک</div><div class="value" id="plate">—</div></div>
+<div class="item"><div class="label">شۆفێر</div><div class="value" id="driver">—</div></div>
+</div>
+<div class="actions" style="margin-top:10px"><button class="btn" id="save">💾 پاشەکەوتکردن</button><button class="btn danger" id="clear">🗑 سڕینەوەی مێژوو</button></div>
+<div class="note">OCR ـی ڕاستەقینە بۆ خوێندنەوەی دەق بە Tesseract.js زیادکراوە. بۆ مارک/مۆدێل و ناسینەوەی پڕۆفیشناڵی ئۆتۆمبێل، پێویستی بە Vision AI endpoint هەیە؛ هیچ API key ـێک لە ناو فایلەکە دانەنراوە بۆ ئەوەی نهێنییەکەت بپارێزرێت.</div>
+<div style="margin-top:10px">
+<input id="aiEndpoint" placeholder="Vision AI endpoint (optional)" style="width:100%;padding:12px;border-radius:12px;border:1px solid #29415f;background:#081321;color:white">
+</div>
+</section>
+
+<section class="panel"><div class="title">مێژووی ئۆتۆمبێلەکان</div><div id="history" class="history"></div></section>
+</div>
+
+<script>
+const v=document.getElementById('video');
+let stream=null, facing='environment', auto=true, scanning=false, busy=false, lastSavedKey='', cooldown=0;
+let ocrWorker=null;
+const $=id=>document.getElementById(id);
+
+function isCameraContext(){
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
+}
+
+function showCameraHelp(show){
+  $('cameraHelp').style.display=show?'block':'none';
+}
+
+async function startCamera(){
+  try{
+    if(!window.isSecureContext){
+      $('camState').textContent='HTTPS پێویستە';
+      $('httpsNotice').style.display='block';
+      showCameraHelp(true);
+      return;
+    }
+    if(!navigator.mediaDevices?.getUserMedia) throw new Error('NO_MEDIA');
+    $('httpsNotice').style.display='none';
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    });
+    v.srcObject=stream;
+    await v.play().catch(()=>{});
+    scanning=true;
+    showCameraHelp(false);
+    $('camState').textContent=facing==='environment'?'پشتەوە · LIVE':'پێشەوە · LIVE';
+  }catch(e){
+    scanning=false;
+    stream=null;
+    $('camState').textContent=e.name==='NotAllowedError'?'Camera permission denied':'Camera unavailable';
+    showCameraHelp(true);
+    console.warn('Camera unavailable:',e);
+  }
+}
+
+document.getElementById('switch').onclick=async()=>{
+  if(!isCameraContext()){
+    $('camState').textContent='HTTPS پێویستە';
+    showCameraHelp(true);
+    return;
+  }
+  facing=facing==='environment'?'user':'environment';
+  await startCamera();
+};
+
+document.getElementById('stop').onclick=()=>{
+  auto=false; scanning=false;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  v.srcObject=null;
+  $('camState').textContent='وەستاوە';
+  document.getElementById('auto').textContent='▶ AUTO';
+};
+
+document.getElementById('auto').onclick=async()=>{
+  auto=!auto;
+  document.getElementById('auto').textContent=auto?'AUTO':'▶ AUTO';
+  if(auto && !stream) await startCamera();
+};
+
+document.getElementById('takePhoto').onclick=()=>document.getElementById('cameraInput').click();
+
+document.getElementById('cameraInput').addEventListener('change',async e=>{
+  const file=e.target.files?.[0];
+  if(!file)return;
+  const img=new Image();
+  img.onload=async()=>{
+    const c=document.createElement('canvas');
+    const max=1400, scale=Math.min(1,max/img.width);
+    c.width=Math.round(img.width*scale); c.height=Math.round(img.height*scale);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    await processFrame(c,true);
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(file);
+});
+
+async function getFrame(){
+  const c=document.createElement('canvas');
+  const w=Math.min(v.videoWidth||1280,1280);
+  const h=Math.round(w*(v.videoHeight||720)/(v.videoWidth||1280));
+  c.width=w;c.height=h;
+  c.getContext('2d',{willReadFrequently:true}).drawImage(v,0,0,w,h);
+  return c;
+}
+
+function detectColor(canvas){
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const w=canvas.width,h=canvas.height;
+  const sx=Math.floor(w*.2),sy=Math.floor(h*.22),sw=Math.floor(w*.6),sh=Math.floor(h*.45);
+  const d=ctx.getImageData(sx,sy,sw,sh).data;
+  let r=0,g=0,b=0,n=0;
+  for(let i=0;i<d.length;i+=16){r+=d[i];g+=d[i+1];b+=d[i+2];n++}
+  r/=n;g/=n;b/=n;
+  const max=Math.max(r,g,b),min=Math.min(r,g,b);
+  if(max<55)return'ڕەش';
+  if(max-min<18&&max>185)return'سپی';
+  if(max-min<22)return'خۆڵەمێشی';
+  if(r>g*1.35&&r>b*1.25)return'سور';
+  if(b>r*1.25&&b>g*1.12)return'شین';
+  if(g>r*1.18&&g>b*1.1)return'سەوز';
+  if(r>120&&g>80&&b<80)return'زەرد/قاوەیی';
+  return'ڕەنگی تێکەڵ';
+}
+
+function cleanPlate(text){
+  return text.replace(/[\n\r]/g,' ').replace(/[^A-Za-z0-9\u0600-\u06FF\u0660-\u0669\u06F0-\u06F9 -]/g,' ').replace(/\s+/g,' ').trim().slice(0,40);
+}
+
+async function getOCR(canvas){
+  try{
+    if(!window.Tesseract)return'پلاک — OCR library نەهاتووە';
+    if(!ocrWorker) ocrWorker=await Tesseract.createWorker('eng',1);
+    const c=document.createElement('canvas');
+    c.width=Math.floor(canvas.width*.85);c.height=Math.floor(canvas.height*.42);
+    c.getContext('2d').drawImage(canvas,Math.floor(canvas.width*.075),Math.floor(canvas.height*.30),c.width,c.height,0,0,c.width,c.height);
+    const ret=await ocrWorker.recognize(c);
+    return cleanPlate(ret.data.text)||'پلاک نەدۆزرایەوە';
+  }catch(e){return'OCR بەردەست نییە'}
+}
+
+async function visionAI(canvas){
+  const endpoint=$('aiEndpoint')?.value.trim();
+  if(!endpoint)return null;
+  try{
+    const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      image:canvas.toDataURL('image/jpeg',.78),
+      task:'vehicle identification, make, model, color, license plate'
+    })});
+    if(!res.ok)throw new Error(res.status);
+    return await res.json();
+  }catch(e){console.warn(e);return null}
+}
+
+async function processFrame(frame,manual=false){
+  if(busy)return;
+  busy=true;
+  try{
+    $('car').textContent='AI دەکات...';
+    $('color').textContent=detectColor(frame);
+    $('plate').textContent='OCR دەکات...';
+    $('driver').textContent='Face detection';
+
+    const [plate,ai]=await Promise.all([getOCR(frame),visionAI(frame)]);
+    const color=ai?.color||detectColor(frame);
+    const car=ai?.make_model||ai?.vehicle||ai?.car||'ئۆتۆمبێل — Vision AI endpoint پێویستە';
+    const finalPlate=ai?.plate||plate;
+
+    $('car').textContent=car;
+    $('color').textContent=color;
+    $('plate').textContent=finalPlate;
+    $('driver').textContent=ai?.driver?'Detected':'Face detection';
+
+    const rec={car,color,plate:finalPlate,driver:$('driver').textContent,time:new Date().toLocaleString('ku')};
+    const key=rec.plate+'|'+rec.car;
+    if((manual || finalPlate!=='پلاک نەدۆزرایەوە') && key!==lastSavedKey){
+      lastSavedKey=key;
+      const h=JSON.parse(localStorage.getItem('carHistory')||'[]');
+      h.unshift(rec);
+      localStorage.setItem('carHistory',JSON.stringify(h.slice(0,100)));
+      render();
+    }
+  }finally{busy=false}
+}
+
+async function autoScan(){
+  if(!auto||!scanning||!stream||busy||Date.now()<cooldown||v.readyState<2)return;
+  cooldown=Date.now()+6500;
+  await processFrame(await getFrame());
+}
+
+function render(){
+ const h=JSON.parse(localStorage.getItem('carHistory')||'[]'),box=$('history');
+ box.innerHTML=h.length?h.map(x=>`<div class="record"><b>${x.plate}</b> · ${x.car}<br><small>${x.color} · ${x.driver} · ${x.time}</small></div>`).join(''):'<div class="empty">هیچ تۆمارێک نییە</div>';
+}
+
+document.getElementById('clear').onclick=()=>{
+ if(confirm('هەموو مێژوو بسڕدرێتەوە؟')){localStorage.removeItem('carHistory');lastSavedKey='';render();}
+};
+
+render();
+if('serviceWorker' in navigator && window.isSecureContext){
+  navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW:',e));
+}
+setInterval(autoScan,1000);
+startCamera();
+window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
+</script>
+</body>
+</html>
